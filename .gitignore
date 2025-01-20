@@ -1,0 +1,21 @@
+# Virtual Environment
+venv/
+
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Telegram session files
+*.session
+*.session-journal
+
+# IDE
+.vscode/
+.idea/
+
+# Config files that might contain sensitive data
+config.json
