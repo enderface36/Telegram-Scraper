@@ -299,23 +299,29 @@ class TelegramWorker(QThread):
                 try:
                     self.message_received.emit(config.source_channel['name'])
                     
+                    # Get sender first since we'll need it for all user filters
+                    sender = await event.get_sender()
+                    
+                    # User filter checks
+                    if config.user_filter == "admins":
+                        admins = await self.client.get_participants(event.chat_id, filter=ChannelParticipantsAdmins())
+                        admin_ids = [admin.id for admin in admins]
+                        if sender.id not in admin_ids:
+                            continue
+                    elif config.user_filter == "custom_users":  # Changed from "custom" to match the combo box value
+                        if not config.custom_users:  # If no users selected, skip
+                            continue
+                        # Check if sender's ID matches any selected user's ID
+                        selected_user_ids = [user['id'] for user in config.custom_users]
+                        if sender.id not in selected_user_ids:
+                            continue
+
                     # Check if any filters are set
                     has_filters = (
-                        config.user_filter != "all" or  # User filter is set
+                        config.user_filter != "all_users" or  # User filter is set
                         config.custom_users or  # Custom users are selected
                         config.regex_pattern != REGEX_PRESETS["All Text"]  # Regex filter is not "All Text"
                     )
-                    
-                    # User filter checks...
-                    if config.user_filter == "admins":
-                        sender = await event.get_sender()
-                        admins = await self.client.get_participants(event.chat_id, filter=ChannelParticipantsAdmins())
-                        if sender.id not in [admin.id for admin in admins]:
-                            continue
-                    elif config.user_filter == "custom" and config.custom_users:
-                        sender = await event.get_sender()
-                        if not any(user['id'] == sender.id for user in config.custom_users):
-                            continue
 
                     # Check message content
                     if config.regex_pattern:
@@ -771,7 +777,17 @@ class MainWindow(QMainWindow):
         config.source_channel = widget['source'].currentData()
         config.target_channel = widget['target'].currentData()
         config.secondary_target = widget['secondary_target_data']  # Now using user info
-        config.user_filter = widget['user_filter'].currentText().lower().replace(" ", "_")
+        
+        # Update user filter - convert UI text to config value
+        filter_text = widget['user_filter'].currentText()
+        if filter_text == "All Users":
+            config.user_filter = "all_users"
+        elif filter_text == "Admins Only":
+            config.user_filter = "admins"
+        elif filter_text == "Custom Users":
+            config.user_filter = "custom_users"
+        
+        config.custom_users = widget['selected_users']
         
         if widget['regex'].currentText() == "Custom":
             config.regex_pattern = widget['custom_regex'].text()
@@ -779,8 +795,6 @@ class MainWindow(QMainWindow):
             config.regex_pattern = REGEX_PRESETS[widget['regex'].currentText()]
         
         config.is_active = widget['active'].isChecked()
-        
-        config.custom_users = widget['selected_users']
         
         config.verify_dex_paid = widget['verify_dex'].isChecked()
         config.prevent_duplicates = widget['prevent_duplicates'].isChecked()
