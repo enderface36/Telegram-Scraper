@@ -11,7 +11,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QHBoxLayout, QPushButton, QLabel, QLineEdit,
                            QListWidget, QMessageBox, QCheckBox, QProgressBar,
                            QInputDialog, QComboBox, QGroupBox, QScrollArea,
-                           QTextEdit, QDialog, QListWidgetItem, QTabWidget)
+                           QTextEdit, QDialog, QListWidgetItem, QTabWidget,
+                           QSizePolicy)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QColor, QPalette
 from PyQt5.QtCore import QTimer
@@ -420,7 +421,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Telegram Channel Scraper")
-        self.setMinimumSize(1200, 800)
+        self.setMinimumSize(800, 600)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint | Qt.WindowMinimizeButtonHint)
         
         self.worker = TelegramWorker()
         self.worker.update_status.connect(self.update_status)
@@ -445,9 +447,11 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
 
-        # Create tab widget
+        # Create tab widget and make it expand
         self.tab_widget = QTabWidget()
+        self.tab_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.tab_widget)
 
         # Create tabs
@@ -531,12 +535,18 @@ class MainWindow(QMainWindow):
     def setup_monitors_tab(self):
         monitors_tab = QWidget()
         layout = QVBoxLayout(monitors_tab)
+        layout.setContentsMargins(5, 5, 5, 5)
 
-        # Monitoring section
+        # Monitoring section - make it expand
         self.monitoring_area = QScrollArea()
         self.monitoring_area.setWidgetResizable(True)
+        self.monitoring_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
         self.monitoring_container = QWidget()
         self.monitoring_layout = QVBoxLayout(self.monitoring_container)
+        self.monitoring_layout.setContentsMargins(5, 5, 5, 5)
+        self.monitoring_layout.addStretch()  # Add stretch at the end
+        
         self.monitoring_area.setWidget(self.monitoring_container)
         layout.addWidget(self.monitoring_area)
 
@@ -550,7 +560,9 @@ class MainWindow(QMainWindow):
 
     def add_monitoring_widget(self, saved_config=None):
         monitor_group = QGroupBox("Channel Monitor")
+        monitor_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout = QVBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
 
         # Header with title and remove button
         header_layout = QHBoxLayout()
@@ -642,7 +654,9 @@ class MainWindow(QMainWindow):
         
         message_history = QTextEdit()
         message_history.setReadOnly(True)
+        message_history.setMinimumHeight(60)  # Reduce minimum height
         message_history.setMaximumHeight(100)
+        message_history.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout.addWidget(message_history)
 
         # Add DexScreener verification toggle
@@ -716,6 +730,18 @@ class MainWindow(QMainWindow):
             self.monitoring_widgets[current_index]['selected_users'] = saved_config['selected_users']
             if saved_config['selected_users']:
                 select_users_btn.setText(f"Select Users ({len(saved_config['selected_users'])} selected)")
+
+        # Remove the stretch from monitoring_layout if it exists
+        if self.monitoring_layout.count() > 0:
+            last_item = self.monitoring_layout.itemAt(self.monitoring_layout.count() - 1)
+            if last_item.spacerItem():
+                self.monitoring_layout.removeItem(last_item)
+
+        # Add the new monitor
+        self.monitoring_layout.addWidget(monitor_group)
+        
+        # Add stretch after all monitors
+        self.monitoring_layout.addStretch()
 
     def update_monitoring(self, index):
         widget = self.monitoring_widgets[index]
