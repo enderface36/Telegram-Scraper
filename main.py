@@ -302,26 +302,21 @@ class TelegramWorker(QThread):
                     # Get sender first since we'll need it for all user filters
                     sender = await event.get_sender()
                     
-                    # User filter checks
+                    # User filter checks - simplified and fixed logic
                     if config.user_filter == "admins":
+                        # Check if sender is admin
                         admins = await self.client.get_participants(event.chat_id, filter=ChannelParticipantsAdmins())
                         admin_ids = [admin.id for admin in admins]
                         if sender.id not in admin_ids:
                             continue
-                    elif config.user_filter == "custom_users":  # Changed from "custom" to match the combo box value
+                    elif config.user_filter == "custom_users":
+                        # Check if sender is in the selected users list
                         if not config.custom_users:  # If no users selected, skip
                             continue
-                        # Check if sender's ID matches any selected user's ID
-                        selected_user_ids = [user['id'] for user in config.custom_users]
-                        if sender.id not in selected_user_ids:
+                        # Simple ID comparison
+                        if not any(user['id'] == sender.id for user in config.custom_users):
                             continue
-
-                    # Check if any filters are set
-                    has_filters = (
-                        config.user_filter != "all_users" or  # User filter is set
-                        config.custom_users or  # Custom users are selected
-                        config.regex_pattern != REGEX_PRESETS["All Text"]  # Regex filter is not "All Text"
-                    )
+                    # If filter is "all_users", we don't need any check
 
                     # Check message content
                     if config.regex_pattern:
@@ -334,14 +329,13 @@ class TelegramWorker(QThread):
                             if config.is_duplicate(contract_address):
                                 continue
                             
-                            # Only verify dex paid if enabled AND filters are set
-                            if config.verify_dex_paid and has_filters:
+                            # Only verify dex paid if enabled
+                            if config.verify_dex_paid:
                                 is_paid = await self.verify_dex_paid(contract_address)
                                 if not is_paid:
                                     continue
                             
                             # Forward the message with detailed information
-                            sender = await event.get_sender()
                             sender_name = f"{sender.first_name or ''} {sender.last_name or ''}".strip() or "Unknown"
                             sender_username = f"@{sender.username}" if sender.username else ""
                             user_info = f"{sender_name} {sender_username}".strip()
@@ -355,7 +349,7 @@ class TelegramWorker(QThread):
                             )
                             
                             # Only add DexScreener status if filters are set
-                            if has_filters:
+                            if config.user_filter != "all_users":
                                 forward_message += f"✅ Dex Paid: {'Yes' if config.verify_dex_paid else 'Not Checked'}\n"
                             
                             await self.client.send_message(
@@ -776,17 +770,17 @@ class MainWindow(QMainWindow):
         config = MonitoringConfig()
         config.source_channel = widget['source'].currentData()
         config.target_channel = widget['target'].currentData()
-        config.secondary_target = widget['secondary_target_data']  # Now using user info
+        config.secondary_target = widget['secondary_target_data']
         
-        # Update user filter - convert UI text to config value
-        filter_text = widget['user_filter'].currentText()
-        if filter_text == "All Users":
-            config.user_filter = "all_users"
-        elif filter_text == "Admins Only":
-            config.user_filter = "admins"
-        elif filter_text == "Custom Users":
-            config.user_filter = "custom_users"
+        # Simplified user filter mapping
+        filter_map = {
+            "All Users": "all_users",
+            "Admins Only": "admins",
+            "Custom Users": "custom_users"
+        }
+        config.user_filter = filter_map[widget['user_filter'].currentText()]
         
+        # Set selected users
         config.custom_users = widget['selected_users']
         
         if widget['regex'].currentText() == "Custom":
@@ -795,7 +789,6 @@ class MainWindow(QMainWindow):
             config.regex_pattern = REGEX_PRESETS[widget['regex'].currentText()]
         
         config.is_active = widget['active'].isChecked()
-        
         config.verify_dex_paid = widget['verify_dex'].isChecked()
         config.prevent_duplicates = widget['prevent_duplicates'].isChecked()
         
