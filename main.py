@@ -38,6 +38,16 @@ class MonitoringConfig:
         self.regex_pattern = REGEX_PRESETS["Solana Contract Address"]
         self.is_active = False
         self.verify_dex_paid = True
+        self.prevent_duplicates = True  # Add new option
+        self.seen_contracts = set()  # To track seen contracts
+
+    def is_duplicate(self, contract):
+        if not self.prevent_duplicates:
+            return False
+        if contract in self.seen_contracts:
+            return True
+        self.seen_contracts.add(contract)
+        return False
 
 class GlobalSettings:
     def __init__(self):
@@ -313,6 +323,10 @@ class TelegramWorker(QThread):
                         timestamp = datetime.now().strftime("%H:%M:%S")
                         for match in matches:
                             contract_address = match.group()
+                            
+                            # Check for duplicates
+                            if config.is_duplicate(contract_address):
+                                continue
                             
                             # Only verify dex paid if enabled AND filters are set
                             if config.verify_dex_paid and has_filters:
@@ -659,11 +673,17 @@ class MainWindow(QMainWindow):
         message_history.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout.addWidget(message_history)
 
-        # Add DexScreener verification toggle
+        # Add DexScreener verification toggle and duplicate prevention in same row
         verify_dex_layout = QHBoxLayout()
         verify_dex_check = QCheckBox("Verify DexScreener Paid")
         verify_dex_check.setChecked(True)
         verify_dex_layout.addWidget(verify_dex_check)
+        
+        # Add prevent duplicates checkbox
+        prevent_duplicates_check = QCheckBox("Prevent Duplicates")
+        prevent_duplicates_check.setChecked(True)
+        verify_dex_layout.addWidget(prevent_duplicates_check)
+        
         layout.addLayout(verify_dex_layout)
 
         monitor_group.setLayout(layout)
@@ -684,6 +704,7 @@ class MainWindow(QMainWindow):
             'select_users_btn': select_users_btn,
             'selected_users': [],
             'verify_dex': verify_dex_check,
+            'prevent_duplicates': prevent_duplicates_check,
             'remove_btn': remove_btn
         })
 
@@ -725,6 +746,7 @@ class MainWindow(QMainWindow):
             self.regex_input.setText(saved_config['custom_regex'])
             active_check.setChecked(saved_config['is_active'])
             verify_dex_check.setChecked(saved_config['verify_dex'])
+            prevent_duplicates_check.setChecked(saved_config.get('prevent_duplicates', True))  # Default to True
             
             # Load selected users
             self.monitoring_widgets[current_index]['selected_users'] = saved_config['selected_users']
@@ -761,6 +783,7 @@ class MainWindow(QMainWindow):
         config.custom_users = widget['selected_users']
         
         config.verify_dex_paid = widget['verify_dex'].isChecked()
+        config.prevent_duplicates = widget['prevent_duplicates'].isChecked()
         
         # Update global settings
         self.worker.global_settings.bot_channel = self.bot_channel_combo.currentData()
@@ -975,7 +998,8 @@ class MainWindow(QMainWindow):
                 'regex_preset': widget['regex'].currentText(),
                 'custom_regex': widget['custom_regex'].text(),
                 'is_active': widget['active'].isChecked(),
-                'verify_dex': widget['verify_dex'].isChecked()
+                'verify_dex': widget['verify_dex'].isChecked(),
+                'prevent_duplicates': widget['prevent_duplicates'].isChecked(),
             }
             settings['monitors'].append(monitor)
 
