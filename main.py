@@ -4,7 +4,6 @@ import os
 import asyncio
 import re
 from datetime import datetime
-from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.tl.types import Channel, Chat, User, ChannelParticipantsAdmins, ChannelParticipant
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
@@ -14,11 +13,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QTextEdit, QDialog, QListWidgetItem, QTabWidget,
                            QSizePolicy)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QColor, QPalette
+from PyQt5.QtGui import QColor, QPalette, QIcon
 from PyQt5.QtCore import QTimer
-
-# Load environment variables
-load_dotenv()
 
 # Regex presets
 REGEX_PRESETS = {
@@ -56,6 +52,8 @@ class GlobalSettings:
         self.dex_paid_patterns = [
             "dex paid"  # Simple case-insensitive substring match
         ]
+        self.api_id = ""  # Added API ID
+        self.api_hash = ""  # Added API Hash
 
 class UserSelectionDialog(QDialog):
     def __init__(self, parent=None):
@@ -137,8 +135,8 @@ class TelegramWorker(QThread):
     
     def __init__(self):
         super().__init__()
-        self.api_id = int(os.getenv('API_ID', '0'))
-        self.api_hash = os.getenv('API_HASH', '')
+        self.api_id = None
+        self.api_hash = None
         self.client = None
         self.phone = None
         self.code = None
@@ -150,10 +148,14 @@ class TelegramWorker(QThread):
 
     async def connect_client(self):
         if not self.client:
+            if not self.api_id or not self.api_hash:
+                self.update_status.emit("API credentials not set")
+                return False
             self.client = TelegramClient('scraper_session', self.api_id, self.api_hash)
         
         if not self.client.is_connected():
             await self.client.connect()
+        return True
 
     async def sign_in(self):
         if not await self.client.is_user_authorized():
@@ -431,10 +433,104 @@ class TelegramWorker(QThread):
         else:
             self.update_status.emit("Error: Client not connected")
 
+class SplashScreen(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Loading...")
+        self.setFixedSize(400, 200)
+        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        
+        layout = QVBoxLayout()
+        
+        # Create a frame to hold the content
+        container = QWidget()
+        container.setObjectName("container")
+        container.setStyleSheet("""
+            QWidget#container {
+                background-color: #2b2b2b;
+                border-radius: 10px;
+                border: 1px solid #3d3d3d;
+            }
+        """)
+        
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Title
+        title = QLabel("Telegram Channel Scraper - ALPHA VERSION (created by @fidg3tt)")
+        title.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 18px;
+                font-weight: bold;
+                font-family: Arial;
+            }
+        """)
+        title.setAlignment(Qt.AlignCenter)
+        container_layout.addWidget(title)
+        
+        # Created by
+        creator = QLabel("Created by @fidg3tt")
+        creator.setStyleSheet("""
+            QLabel {
+                color: #a0a0a0;
+                font-size: 12px;
+                font-family: Arial;
+            }
+        """)
+        creator.setAlignment(Qt.AlignCenter)
+        container_layout.addWidget(creator)
+        
+        # Loading text
+        self.status = QLabel("Initializing...")
+        self.status.setStyleSheet("""
+            QLabel {
+                color: #e0e0e0;
+                font-size: 14px;
+                font-family: Arial;
+            }
+        """)
+        self.status.setAlignment(Qt.AlignCenter)
+        container_layout.addWidget(self.status)
+        
+        # Progress bar
+        self.progress = QProgressBar()
+        self.progress.setStyleSheet("""
+            QProgressBar {
+                border: 2px solid #383838;
+                border-radius: 5px;
+                text-align: center;
+                background-color: #1e1e1e;
+            }
+            QProgressBar::chunk {
+                background-color: #4a9eff;
+                border-radius: 3px;
+            }
+        """)
+        self.progress.setMinimum(0)
+        self.progress.setMaximum(0)  # Infinite progress
+        container_layout.addWidget(self.progress)
+        
+        layout.addWidget(container)
+        self.setLayout(layout)
+        
+        # Center on screen
+        self.center()
+        
+    def center(self):
+        frame = self.frameGeometry()
+        screen = QApplication.primaryScreen().geometry().center()
+        frame.moveCenter(screen)
+        self.move(frame.topLeft())
+        
+    def update_status(self, text):
+        self.status.setText(text)
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Telegram Channel Scraper")
+        self.setWindowTitle("Telegram Channel Scraper - ALPHA VERSION 0.0.1 (created by @fidg3tt)")
         self.setMinimumSize(800, 600)
         self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint | Qt.WindowMinimizeButtonHint)
         
@@ -469,9 +565,106 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.tab_widget)
 
         # Create tabs
+        self.setup_help_tab()  # Add help tab first
         self.setup_status_tab()
         self.setup_settings_tab()
         self.setup_monitors_tab()
+
+    def setup_help_tab(self):
+        help_tab = QWidget()
+        layout = QVBoxLayout(help_tab)
+        
+        help_text = QTextEdit()
+        help_text.setReadOnly(True)
+        help_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #FFFFFF;
+                color: #000000;
+                font-family: Arial, sans-serif;
+                padding: 15px;
+                font-size: 14px;
+            }
+        """)
+        
+        instructions = """
+# Telegram Channel Scraper - User Guide
+
+Created by @fidg3tt
+
+## Initial Setup
+
+1. **Get Your API Credentials**
+   - Go to https://my.telegram.org/auth
+   - Log in with your phone number
+   - Click on 'API development tools'
+   - Create a new application if you haven't already
+   - Copy your **API ID** and **API Hash**
+
+2. **Enter API Credentials**
+   - Go to the 'Settings' tab
+   - Enter your API ID in the 'API ID' field
+   - Enter your API Hash in the 'API Hash' field
+   - Enter your phone number (with country code, e.g., +1234567890)
+   - Click 'Login' and enter the verification code when prompted
+
+3. **Set Up Phanes Bot (For DexScreener Verification)**
+   - Find @Phanes_Bot on Telegram
+   - Start a chat with the bot
+   - Create a new group and add the bot to it
+   - Go to the 'Settings' tab in this app
+   - Select your Phanes bot group in the 'Bot Channel' dropdown
+   - The app will now use this group to verify if contracts are dex paid
+
+## Setting Up Monitors
+
+1. **Add a New Monitor**
+   - Go to the 'Monitors' tab
+   - Click 'Add New Monitor'
+   - Select source channel (where to monitor messages from)
+   - Select target channel (where to forward matches to)
+   - Optionally set a secondary target (e.g., a bot)
+
+2. **Configure Filters**
+   - Choose user filter:
+     * All Users: Monitor messages from everyone
+     * Admins Only: Only monitor admin messages
+     * Custom Users: Select specific users to monitor
+   - Select content filter type
+   - Enable/disable DexScreener verification (requires Phanes bot setup)
+   - Enable/disable duplicate prevention
+
+3. **Activate Monitoring**
+   - Check the 'Active' box to start monitoring
+   - The status will update to show 'Monitoring'
+   - Messages matching your criteria will be forwarded automatically
+
+## Tips
+
+- Use the Status tab to view activity logs
+- Save your settings regularly (they auto-save when closing)
+- You can add multiple monitors for different channels
+- Test your setup with a small group first
+- Check the activity log for any errors or issues
+- When using DexScreener verification, make sure the Phanes bot is responding in your bot group
+- When using custom users, click and WAIT PATIENTLY for the users to load before spamming the select users button
+
+## Support
+
+If you need help:
+1. Check the error messages in the Status tab
+2. Make sure your API credentials are correct
+3. Verify you have proper permissions in the channels
+4. Ensure your Telegram account is not limited
+5. For DexScreener issues, verify the Phanes bot is working in your group
+
+---
+*Created and maintained by @fidg3tt*
+"""
+        
+        help_text.setMarkdown(instructions)
+        layout.addWidget(help_text)
+        
+        self.tab_widget.addTab(help_tab, "Help")
 
     def setup_status_tab(self):
         status_tab = QWidget()
@@ -505,13 +698,57 @@ class MainWindow(QMainWindow):
         settings_tab = QWidget()
         layout = QVBoxLayout(settings_tab)
 
+        # API Credentials section
+        api_group = QGroupBox("API Credentials")
+        api_layout = QVBoxLayout()
+        
+        # API ID input with show/hide toggle
+        api_id_layout = QHBoxLayout()
+        self.api_id_input = QLineEdit()
+        self.api_id_input.setPlaceholderText("Enter your Telegram API ID")
+        self.api_id_input.setEchoMode(QLineEdit.Password)  # Hide by default
+        api_id_show = QPushButton("Show")
+        api_id_show.setFixedWidth(50)
+        api_id_show.clicked.connect(
+            lambda: self.toggle_password_visibility(self.api_id_input, api_id_show)
+        )
+        api_id_layout.addWidget(QLabel("API ID:"))
+        api_id_layout.addWidget(self.api_id_input)
+        api_id_layout.addWidget(api_id_show)
+        api_layout.addLayout(api_id_layout)
+        
+        # API Hash input with show/hide toggle
+        api_hash_layout = QHBoxLayout()
+        self.api_hash_input = QLineEdit()
+        self.api_hash_input.setPlaceholderText("Enter your Telegram API Hash")
+        self.api_hash_input.setEchoMode(QLineEdit.Password)  # Hide by default
+        api_hash_show = QPushButton("Show")
+        api_hash_show.setFixedWidth(50)
+        api_hash_show.clicked.connect(
+            lambda: self.toggle_password_visibility(self.api_hash_input, api_hash_show)
+        )
+        api_hash_layout.addWidget(QLabel("API Hash:"))
+        api_hash_layout.addWidget(self.api_hash_input)
+        api_hash_layout.addWidget(api_hash_show)
+        api_layout.addLayout(api_hash_layout)
+        
+        api_group.setLayout(api_layout)
+        layout.addWidget(api_group)
+
         # Login section
         login_group = QGroupBox("Login")
         login_layout = QHBoxLayout()
         self.phone_input = QLineEdit()
         self.phone_input.setPlaceholderText("Enter phone number (with country code)")
+        self.phone_input.setEchoMode(QLineEdit.Password)  # Hide by default
+        phone_show = QPushButton("Show")
+        phone_show.setFixedWidth(50)
+        phone_show.clicked.connect(
+            lambda: self.toggle_password_visibility(self.phone_input, phone_show)
+        )
         login_layout.addWidget(QLabel("Phone:"))
         login_layout.addWidget(self.phone_input)
+        login_layout.addWidget(phone_show)
         self.login_button = QPushButton("Login")
         self.login_button.clicked.connect(self.start_login)
         login_layout.addWidget(self.login_button)
@@ -810,14 +1047,23 @@ class MainWindow(QMainWindow):
 
     def start_login(self):
         phone = self.phone_input.text()
-        if not phone:
-            QMessageBox.warning(self, "Error", "Please enter your phone number")
+        api_id = self.api_id_input.text()
+        api_hash = self.api_hash_input.text()
+        
+        if not phone or not api_id or not api_hash:
+            QMessageBox.warning(self, "Error", "Please enter your phone number, API ID, and API Hash")
             return
         
-        self.worker.set_phone(phone)
-        self.login_button.setEnabled(False)
-        self.update_status("Connecting...")
-        self.worker.start()
+        try:
+            self.worker.api_id = int(api_id)
+            self.worker.api_hash = api_hash
+            self.worker.set_phone(phone)
+            self.login_button.setEnabled(False)
+            self.update_status("Connecting...")
+            self.worker.start()
+        except ValueError:
+            QMessageBox.warning(self, "Error", "API ID must be a number")
+            return
 
     def update_status(self, message):
         """Update the status in the activity log only for important messages"""
@@ -902,6 +1148,8 @@ class MainWindow(QMainWindow):
                 
                 # Load login info
                 self.phone_input.setText(settings.get('phone', ''))
+                self.api_id_input.setText(settings.get('api_id', ''))
+                self.api_hash_input.setText(settings.get('api_hash', ''))
                 
                 # Load bot settings after channels are loaded
                 self.pending_bot_channel = settings.get('bot_channel')
@@ -988,6 +1236,8 @@ class MainWindow(QMainWindow):
     def save_settings(self):
         settings = {
             'phone': self.phone_input.text(),
+            'api_id': self.api_id_input.text(),
+            'api_hash': self.api_hash_input.text(),
             'bot_channel': self.bot_channel_combo.currentData(),
             'wait_time': self.wait_time_input.text(),
             'monitors': []
@@ -1059,8 +1309,56 @@ class MainWindow(QMainWindow):
         log_entry = f"[{timestamp}] Error: Failed to forward to @{username} - {error_msg}\n"
         self.activity_log.append(log_entry)
 
+    def toggle_password_visibility(self, input_field, button):
+        """Toggle password visibility and update button text"""
+        if input_field.echoMode() == QLineEdit.Password:
+            input_field.setEchoMode(QLineEdit.Normal)
+            button.setText("Hide")
+        else:
+            input_field.setEchoMode(QLineEdit.Password)
+            button.setText("Show")
+
 if __name__ == '__main__':
+    import sys
+    import os
+    from PyQt5.QtWidgets import QApplication
+    
     app = QApplication(sys.argv)
+    
+    # Get the absolute path to the icon file
+    if getattr(sys, 'frozen', False):
+        # If we're running as a PyInstaller bundle
+        application_path = sys._MEIPASS
+    else:
+        # If we're running as a normal Python script
+        application_path = os.path.dirname(os.path.abspath(__file__))
+    
+    icon_path = os.path.join(application_path, 'app.ico')
+    
+    # Set application icon
+    app_icon = QIcon(icon_path)
+    app.setWindowIcon(app_icon)
+    
+    # Set Windows-specific taskbar icon
+    try:
+        import ctypes
+        myappid = u'fidg3tt.telegramchannelscraper.1.0'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except:
+        pass
+    
+    # Show splash screen
+    splash = SplashScreen()
+    splash.setWindowIcon(app_icon)
+    splash.show()
+    app.processEvents()
+    
+    # Initialize main window
     window = MainWindow()
+    window.setWindowIcon(app_icon)
+    
+    # Hide splash and show main window
+    splash.close()
     window.show()
+    
     sys.exit(app.exec_()) 

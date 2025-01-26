@@ -1,6 +1,5 @@
-telethon>=1.28.5
-PyQt5>=5.15.9
-PyQt5-Qt5==5.15.16
-PyQt5-sip==12.16.1
-PyQtWebEngine==5.15.7
-python-dotenv>=1.0.0 
+PyQt5==5.15.9
+telethon==1.38.1
+pyaes==1.6.1
+rsa==4.9
+pyasn1==0.6.1 
